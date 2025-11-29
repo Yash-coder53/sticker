@@ -11,10 +11,6 @@ pkg install -y python git ffmpeg libjpeg-turbo
 # Install Python packages
 pip install telethon pyrogram pillow python-telegram-bot opencv-python numpy requests
 
-# Create bot directory
-mkdir -p ~/sticker-bot
-cd ~/sticker-bot
-
 # Download bot files (you'll need to create these files manually first)
 echo "✅ Installation complete!"
 echo "📝 Edit the bot token in sticker_bot.py"

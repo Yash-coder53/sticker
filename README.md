@@ -1,95 +1,126 @@
-# Telegram Sticker Maker & Memify Bot 🤖🎨
+# 🤖 Sticker Maker Bot 2025
 
-A powerful Telegram bot for creating stickers, memifying images, and generating quote stickers directly in your group chats or private messages.
+A comprehensive Telegram bot for creating stickers from images and videos, with bot cloning functionality. Optimized for Termux and Python.
 
-## Features ✨
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![Telegram](https://img.shields.io/badge/Telegram-Bot_API-green.svg)
+![Termux](https://img.shields.io/badge/Termux-Compatible-orange.svg)
 
-- **🔄 Sticker Memification** (`/mmf`) - Add text to images and stickers
-- **💬 Quote Stickers** (`/q`) - Create stylish quote stickers from messages  
-- **📦 Sticker Creation** (`/kang`) - Convert images to sticker format
-- **🖼️ Multi-format Support** - PNG, JPEG, WEBP, static stickers
-- **🎯 Group Chat Ready** - Works perfectly in Telegram groups
-- **🚀 Termux Compatible** - Optimized for Android Termux hosting
+## ✨ Features
 
-## Commands 📝
+- 🎨 **Image to Sticker** - Convert images to Telegram stickers
+- 🎥 **Video to Sticker** - Convert videos to animated stickers
+- 😂 **Memify Images** - Add meme text to images/stickers
+- 💬 **Quote Stickers** - Create quote stickers from messages
+- 📦 **Sticker Packs** - Manage custom sticker packs
+- 🔄 **Bot Cloning** - Clone the bot with your own token
+- 📱 **Termux Optimized** - Fully compatible with Android Termux
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Android Device with Termux
+- Python 3.8+
+- Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+
+### Installation
+
+1. **Update Termux:**
+```bash
+pkg update && pkg upgrade
+```
+
+2. **Install Dependencies:**
+```bash
+pkg install python git ffmpeg libjpeg-turbo
+pip install telethon pyrogram pillow python-telegram-bot opencv-python numpy requests
+```
+
+3. **Clone Repository:**
+```bash
+git clone https://github.com/yourusername/sticker-bot-2025.git
+cd sticker-bot-2025
+```
+
+4. **Configure Bot:**
+   - Get token from [@BotFather](https://t.me/BotFather)
+   - Edit `sticker_bot.py`:
+   ```python
+   BOT_TOKEN = "YOUR_ACTUAL_BOT_TOKEN_HERE"
+   ```
+
+5. **Run the Bot:**
+```bash
+python sticker_bot.py
+```
+
+## 📋 Bot Commands
 
 | Command | Description | Usage |
 |---------|-------------|--------|
-| `/start` | Start the bot | `/start` |
-| `/mmf` | Memify images/stickers | `/mmf Your text` (reply to image) |
-| `/q` | Create quote stickers | `/q` (reply to text message) |
-| `/kang` | Create stickers from images | `/kang` (reply to image) |
+| `/start` | Start the bot and show help | `/start` |
+| `/mmf` | Add meme text to images/stickers | `/mmf Hello World` |
+| `/q` | Create quote stickers from messages | Reply to message with `/q` |
+| `/kang` | Add to sticker pack | Reply to sticker with `/kang` |
+| `/clone` | Clone bot with your token | `/clone YOUR_BOT_TOKEN` |
+| `Send Video` | Auto-convert to video sticker | Send any video file |
 
-## Installation & Setup 🛠️
+## 🎯 Usage Examples
 
-### Prerequisites
-- Python 3.7+
-- Telegram Bot Token from [@BotFather](https://t.me/BotFather)
-- Termux (Android) or any Python environment
-
-### Step 1: Get Bot Token
-1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. Send `/newbot` and follow instructions
-3. Copy your bot token
-
-### Step 2: Termux Setup
-```bash
-# Update packages
-pkg update && pkg upgrade
-
-# Install Python and required tools
-pkg install python git
-
-# Clone or create project directory
-mkdir telegram-sticker-bot && cd telegram-sticker-bot
+### 1. Creating Meme Stickers
+```
+1. Send an image or sticker
+2. Reply with: /mmf Your Funny Text
+3. Get your memified sticker!
 ```
 
-### Step 3: Install Dependencies
-```bash
-# Install requirements
-pip install -r requirements.txt
-
-# If any issues, install individually:
-pip install python-telegram-bot pillow
+### 2. Quote Stickers
+```
+1. Reply to any message with: /q
+2. Bot creates a stylish quote sticker
+3. Share the quote sticker
 ```
 
-### Step 4: Set Bot Token
-```bash
-# Set as environment variable (recommended)
-export BOT_TOKEN="your_actual_bot_token_here"
-
-# Or edit bot.py and replace YOUR_BOT_TOKEN_HERE
+### 3. Video Stickers
+```
+1. Send any video (max 3 seconds)
+2. Bot automatically converts to webm sticker
+3. Use in your chats instantly
 ```
 
-### Step 5: Run the Bot
-```bash
-python bot.py
+### 4. Bot Cloning
+```
+1. Get token from @BotFather
+2. Use: /clone YOUR_BOT_TOKEN
+3. Your own bot instance starts running
 ```
 
-## Termux Hosting Guide 📱
+## 🔧 Advanced Setup
 
-### Keep Bot Running in Background
+### Running in Background (Termux)
+
+1. **Install tmux:**
 ```bash
-# Install session manager
 pkg install tmux
-
-# Create new session
-tmux new-session -s stickerbot
-
-# Run your bot
-python bot.py
-
-# Detach from session: Ctrl+B, then D
-# Reattach: tmux attach-session -t stickerbot
 ```
 
-### Auto-start on Boot (Optional)
+2. **Create tmux session:**
+```bash
+tmux new-session -s stickerbot
+python sticker_bot.py
+```
+
+3. **Detach session:** `Ctrl+B, D`
+4. **Reattach session:** `tmux attach-session -t stickerbot`
+
+### Auto-start on Termux Launch
+
 Create `~/.termux/boot/start-bot`:
 ```bash
 #!/data/data/com.termux/files/usr/bin/bash
-cd ~/telegram-sticker-bot
-export BOT_TOKEN="your_token"
-python bot.py
+cd ~/sticker-bot-2025
+tmux new-session -d -s stickerbot 'python sticker_bot.py'
 ```
 
 Make executable:
@@ -97,119 +128,126 @@ Make executable:
 chmod +x ~/.termux/boot/start-bot
 ```
 
-## Usage Examples 💡
+## 📁 Project Structure
 
-### 1. Memify an Image
-1. Send an image to bot or reply to image
-2. Use: `/mmf This is hilarious!`
-3. Bot returns memified image
+```
+sticker-bot-2025/
+├── sticker_bot.py              # Main bot file
+├── sticker_bot_advanced.py     # Advanced features
+├── setup.sh                    # Installation script
+├── bot_data.db                 # SQLite database (auto-generated)
+├── requirements.txt            # Python dependencies
+└── README.md                   # This file
+```
 
-### 2. Create Quote Sticker  
-1. Reply to any text message with `/q`
-2. Bot creates stylish quote sticker
+## ⚙️ Configuration
 
-### 3. Make Sticker from Image
-1. Reply to image with `/kang`
-2. Bot provides PNG file ready for sticker packs
+### Environment Variables (Optional)
 
-## Troubleshooting 🔧
+Create `.env` file:
+```env
+BOT_TOKEN=your_bot_token_here
+ADMIN_IDS=123456789,987654321
+MAX_FILE_SIZE=10485760
+```
+
+### Sticker Specifications
+
+- **Image Stickers:** 512x512px, WEBP format
+- **Video Stickers:** 3 seconds max, WEBM format, 512x512px
+- **File Size:** 10MB maximum
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-**Installation Errors:**
+1. **"ffmpeg not found"**
+   ```bash
+   pkg install ffmpeg
+   ```
+
+2. **"Python package installation fails"**
+   ```bash
+   pip install --upgrade pip
+   pkg install python-dev libjpeg-turbo-dev
+   ```
+
+3. **"Bot doesn't respond"**
+   - Check bot token
+   - Ensure internet connection
+   - Verify bot is started with correct privileges
+
+4. **"Video conversion fails"**
+   ```bash
+   pkg reinstall ffmpeg
+   ```
+
+### Logs and Debugging
+
+Enable debug logging:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+## 🔒 Security Notes
+
+- 🤫 Never share your bot token publicly
+- 🔐 Keep your Termux session secure
+- 📱 Use app passwords if 2FA enabled
+- 🗑️ Regularly clean temporary files
+
+## 📈 Performance Tips
+
+1. **Use SSD storage** if possible
+2. **Close background apps** when running bot
+3. **Monitor storage space** for media files
+4. **Use efficient image compression**
+5. **Limit concurrent operations** for stability
+
+## 🤝 Contributing
+
+We welcome contributions! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Open a Pull Request
+
+### Development Setup
+
 ```bash
-# If Pillow fails to install:
-pkg install python libjpeg-turbo
-pip install --upgrade pip
-pip install pillow --no-cache-dir
+git clone https://github.com/yourusername/sticker-bot-2025.git
+cd sticker-bot-2025
+pip install -r requirements.txt
+# Make your changes and test
 ```
 
-**Bot Not Responding:**
-- Check bot token is correct
-- Verify bot is added to chat
-- Check internet connection
+## 📄 License
 
-**Image Processing Errors:**
-- Try different image format
-- Reduce image size
-- Use simpler images
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## File Structure 📁
+## 🆘 Support
 
-```
-telegram-sticker-bot/
-├── bot.py                 # Main bot application
-├── requirements.txt       # Python dependencies
-├── README.md             # Documentation
-└── start.sh             # Quick start script (optional)
-```
+- 📧 Email: your-email@example.com
+- 💬 Telegram: [@YourSupportChannel](https://t.me/YourSupportChannel)
+- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/sticker-bot-2025/issues)
 
-## Support 💬
+## 🙏 Acknowledgments
 
-For issues:
-1. Check this README first
-2. Verify all dependencies installed
-3. Check bot token is correct
-4. Ensure images are supported formats
-
-## License 📄
-
-MIT License - Feel free to modify and distribute.
+- [Telegram Bot API](https://core.telegram.org/bots/api)
+- [Python-Telegram-Bot](https://github.com/python-telegram-bot/python-telegram-bot)
+- [Termux](https://termux.com) community
+- [Pillow](https://python-pillow.org) for image processing
 
 ---
 
-**Happy Sticker Making! 🎨✨**
-```
+**⭐ Star this repo if you found it helpful!**
 
-## 4. Quick Start Script (`start.sh`)
+**🐛 Found a bug?** Open an issue on GitHub.
 
-```bash
-#!/bin/bash
-# start.sh - Quick start script for Telegram Sticker Bot
+**💡 Have a feature request?** We'd love to hear it!
 
-echo "🤖 Starting Telegram Sticker Bot..."
-cd ~/telegram-sticker-bot
+---
 
-# Check if BOT_TOKEN is set
-if [ -z "$BOT_TOKEN" ]; then
-    echo "❌ ERROR: BOT_TOKEN environment variable not set!"
-    echo "Please set it using:"
-    echo "export BOT_TOKEN='your_bot_token_here'"
-    echo "Or edit bot.py and add your token directly"
-    exit 1
-fi
-
-# Check if Python is available
-if ! command -v python &> /dev/null; then
-    echo "❌ Python not found. Installing..."
-    pkg install python -y
-fi
-
-# Install/upgrade dependencies
-echo "📦 Installing dependencies..."
-pip install -r requirements.txt
-
-# Run the bot
-echo "🚀 Starting bot..."
-python bot.py
-```
-
-Make executable:
-```bash
-chmod +x start.sh
-```
-
-## Key Fixes Applied:
-
-1. **✅ Fixed requirements.txt** - Removed problematic packages
-2. **✅ Updated python-telegram-bot** to latest stable version
-3. **✅ Enhanced error handling** with proper try-catch blocks
-4. **✅ Improved image processing** with better format support
-5. **✅ Added input validation** for text length and file types
-6. **✅ Better user feedback** with emojis and clear messages
-7. **✅ Fixed font issues** by using default fonts
-8. **✅ Added environment variable support** for security
-9. **✅ Improved quote sticker design** with better visuals
-10. **✅ Added comprehensive logging** for debugging
-
-The bot should now install and run without errors!
+*Last updated: December 2024 | Compatible with Termux 2025*

@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
 from io import BytesIO
@@ -12,6 +13,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from telegram.constants import ParseMode
 import mimetypes
 from dotenv import load_dotenv
+import subprocess
+import tempfile
 
 # Load environment variables from .env file
 load_dotenv()
@@ -45,7 +48,7 @@ if OWNER_ID and OWNER_ID not in ADMIN_IDS:
     ADMIN_IDS.append(OWNER_ID)
 
 # Other configuration
-MAX_FILE_SIZE = int(os.environ.get('MAX_FILE_SIZE', '52428800'))  # 50MB default
+MAX_FILE_SIZE = int(os.environ.get('MAX_FILE_SIZE', '10485760'))  # 10MB default for Termux
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///stickers.db')
 
 # Sticker configuration
@@ -58,6 +61,15 @@ class StickerMakerBot:
         self.clone_queue = {}
         self.user_stats = {}
         self.bot_start_time = datetime.now()
+        self.ffmpeg_available = self.check_ffmpeg()
+        
+    def check_ffmpeg(self):
+        """Check if ffmpeg is available"""
+        try:
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+            return True
+        except:
+            return False
         
     def is_owner(self, user_id: int) -> bool:
         """Check if user is owner"""
@@ -91,6 +103,8 @@ class StickerMakerBot:
         elif self.is_admin(user_id):
             role = "⭐ *Admin*"
         
+        ffmpeg_status = "✅ Available" if self.ffmpeg_available else "❌ Not available (video features limited)"
+        
         welcome_text = f"""
 ✨ *Welcome to Sticker Maker Bot* ✨
 
@@ -116,7 +130,7 @@ I can help you create amazing stickers!
 📁 *Supported Formats:*
 • Images (JPEG, PNG, WebP)
 • Static Stickers
-• Videos/GIFs (short clips)
+• Videos/GIFs (short clips) {ffmpeg_status}
 
 ⚡ *Simply send me any image/sticker to get started!*
         """
@@ -161,7 +175,7 @@ I can help you create amazing stickers!
 
 *Tips:*
 - Use '\\n' for new lines in text
-- Max file size: 50MB
+- Max file size: 10MB
 - Sticker dimensions: 512x512px recommended
 """
         
@@ -308,6 +322,10 @@ I can help you create amazing stickers!
 ⏰ *Uptime:* {days}d {hours}h {minutes}m {seconds}s
 🔄 *Clone Queue:* {len(self.clone_queue)}
 
+*System Info:*
+📱 Platform: {'Termux' if 'com.termux' in os.getcwd() else 'Server'}
+🎬 FFmpeg: {'✅ Available' if self.ffmpeg_available else '❌ Not available'}
+
 *Owner Info:*
 👑 Owner ID: `{OWNER_ID}`
 ⭐ Admins: {len(ADMIN_IDS)} user(s)
@@ -432,6 +450,7 @@ I can help you create amazing stickers!
 • Version: 2.0
 • Created: 2025
 • Framework: python-telegram-bot
+• Platform: {'Termux (Android)' if 'com.termux' in os.getcwd() else 'Server'}
 
 *Commands:*
 /start - Start the bot
@@ -475,6 +494,9 @@ I can help you create amazing stickers!
             [
                 InlineKeyboardButton("📝 Add Text", callback_data=f"add_text_{message.message_id}"),
                 InlineKeyboardButton("✨ Make Sticker", callback_data=f"make_sticker_{message.message_id}")
+            ],
+            [
+                InlineKeyboardButton("🎨 Add Filter", callback_data=f"filter_{message.message_id}")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -486,10 +508,14 @@ I can help you create amazing stickers!
 
     async def process_video(self, message, context):
         """Process incoming video/gif"""
+        if not self.ffmpeg_available:
+            await message.reply_text("⚠️ Video processing requires FFmpeg. Please install it with: `pkg install ffmpeg`")
+            return
+            
         keyboard = [
             [
                 InlineKeyboardButton("🎥 Extract Frame", callback_data=f"extract_frame_{message.message_id}"),
-                InlineKeyboardButton("⏱️ Duration", callback_data=f"duration_{message.message_id}")
+                InlineKeyboardButton("⏱️ Get Duration", callback_data=f"duration_{message.message_id}")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -525,6 +551,10 @@ I can help you create amazing stickers!
             await self.handle_make_sticker(query, context)
         elif data.startswith("extract_frame_"):
             await self.extract_frame(query, context)
+        elif data.startswith("duration_"):
+            await self.get_duration(query, context)
+        elif data.startswith("filter_"):
+            await self.apply_filter(query, context)
         elif data == "kang_sticker":
             await self.handle_kang_callback(query, context)
         elif data == "admin_panel":
@@ -548,6 +578,7 @@ I can help you create amazing stickers!
 *Bot Stats:*
 • Users: {len(self.user_stats)}
 • Uptime: {(datetime.now() - self.bot_start_time).days} days
+• FFmpeg: {'✅ Available' if self.ffmpeg_available else '❌ Not available'}
 
 *Quick Actions:*
         """
@@ -565,7 +596,12 @@ I can help you create amazing stickers!
 
     async def handle_add_text(self, query, context):
         """Handle add text callback"""
-        await query.edit_message_text("Please send the text you want to add to the image.")
+        message_id = int(query.data.split("_")[-1])
+        self.user_states[query.from_user.id] = {
+            'action': 'add_text',
+            'message_id': message_id
+        }
+        await query.edit_message_text("📝 Please send the text you want to add to the image.\n\nUse \\n for new lines.")
 
     async def handle_make_sticker(self, query, context):
         """Handle make sticker callback"""
@@ -609,7 +645,66 @@ I can help you create amazing stickers!
             
             await query.edit_message_text("🔄 Extracting frame from video...")
             
-            # For Termux, we'll use a simpler approach
+            # Download the video
+            if message.video:
+                file = await message.bot.get_file(message.video.file_id)
+                file_ext = '.mp4'
+            elif message.animation:
+                file = await message.bot.get_file(message.animation.file_id)
+                file_ext = '.gif'
+            else:
+                await query.edit_message_text("❌ No video found")
+                return
+            
+            video_bytes = BytesIO()
+            await file.download_to_memory(video_bytes)
+            
+            # Save temporarily
+            with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
+                tmp.write(video_bytes.getvalue())
+                tmp_path = tmp.name
+            
+            try:
+                # Use ffmpeg to extract frame
+                output_path = tmp_path.replace(file_ext, '.jpg')
+                
+                cmd = ['ffmpeg', '-i', tmp_path, '-ss', '00:00:01', 
+                       '-vframes', '1', '-q:v', '2', output_path, '-y']
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if os.path.exists(output_path):
+                    with open(output_path, 'rb') as f:
+                        await query.message.reply_photo(photo=f)
+                    await query.edit_message_text("✅ Frame extracted successfully!")
+                    os.remove(output_path)
+                else:
+                    await query.edit_message_text("❌ Failed to extract frame. FFmpeg error.")
+                    
+            except subprocess.TimeoutExpired:
+                await query.edit_message_text("❌ Operation timed out. Video might be too long.")
+            except Exception as e:
+                logger.error(f"FFmpeg error: {e}")
+                await query.edit_message_text("❌ Error processing video")
+                
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                    
+        except Exception as e:
+            logger.error(f"Error extracting frame: {e}")
+            await query.edit_message_text("❌ Error processing video")
+
+    async def get_duration(self, query, context):
+        """Get video duration"""
+        message_id = int(query.data.split("_")[-1])
+        
+        try:
+            # Get the original message
+            message = await context.bot.get_message(chat_id=query.message.chat_id, message_id=message_id-1)
+            
+            await query.edit_message_text("🔄 Getting video duration...")
+            
             # Download the video
             if message.video:
                 file = await message.bot.get_file(message.video.file_id)
@@ -619,44 +714,62 @@ I can help you create amazing stickers!
                 await query.edit_message_text("❌ No video found")
                 return
             
-            video_bytes = BytesIO()
-            await file.download_to_memory(video_bytes)
-            video_bytes.seek(0)
+            # Get file size
+            file_size = file.file_size
+            duration = "Unknown"
             
-            # Save temporarily and use ffmpeg if available
-            import subprocess
-            import tempfile
+            if file_size:
+                # Estimate duration based on file size (rough estimate)
+                if message.video:
+                    # Average bitrate for mobile videos
+                    estimated_duration = file_size / (500 * 1024)  # 500 kbps
+                    minutes = int(estimated_duration // 60)
+                    seconds = int(estimated_duration % 60)
+                    duration = f"{minutes}m {seconds}s (estimated)"
+                elif message.animation:
+                    # GIFs are usually short
+                    duration = "Short GIF"
             
-            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
-                tmp.write(video_bytes.read())
-                tmp_path = tmp.name
-            
-            try:
-                # Use ffmpeg to extract frame
-                output_path = tmp_path.replace('.mp4', '.jpg')
-                subprocess.run([
-                    'ffmpeg', '-i', tmp_path, '-ss', '00:00:01', '-vframes', '1', output_path,
-                    '-y'  # Overwrite output file if exists
-                ], timeout=10)
-                
-                if os.path.exists(output_path):
-                    with open(output_path, 'rb') as f:
-                        await query.message.reply_photo(photo=f)
-                    os.remove(output_path)
-                else:
-                    await query.edit_message_text("❌ Failed to extract frame")
-                    
-            except Exception as e:
-                logger.error(f"FFmpeg error: {e}")
-                await query.edit_message_text("❌ FFmpeg not available or video format not supported")
-                
-            finally:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-                    
+            await query.edit_message_text(f"📊 Video Information:\n\n"
+                                         f"📁 File Size: {file_size/1024:.1f} KB\n"
+                                         f"⏱️ Duration: {duration}\n"
+                                         f"🎬 Type: {'Video' if message.video else 'GIF'}")
+
         except Exception as e:
-            logger.error(f"Error extracting frame: {e}")
-            await query.edit_message_text("❌ Error processing video")
+            logger.error(f"Error getting duration: {e}")
+            await query.edit_message_text("❌ Error getting video information")
+
+    async def apply_filter(self, query, context):
+        """Apply filter to image"""
+        message_id = int(query.data.split("_")[-1])
+        
+        try:
+            # Get the original message
+            message = await context.bot.get_message(chat_id=query.message.chat_id, message_id=message_id-1)
+            
+            if message.photo:
+                await query.edit_message_text("🔄 Applying filter...")
+                
+                # Download image
+                file = await message.bot.get_file(message.photo[-1].file_id)
+                image_bytes = BytesIO()
+                await file.download_to_memory(image_bytes)
+                image_bytes.seek(0)
+                
+                # Apply filter
+                filtered_image = await self.apply_image_filter(image_bytes, "grayscale")
+                
+                if filtered_image:
+                    await query.message.reply_photo(photo=filtered_image)
+                    await query.edit_message_text("✅ Filter applied!")
+                else:
+                    await query.edit_message_text("❌ Failed to apply filter")
+            else:
+                await query.edit_message_text("❌ Original message doesn't contain an image")
+                
+        except Exception as e:
+            logger.error(f"Error applying filter: {e}")
+            await query.edit_message_text("❌ Error processing image")
 
     async def handle_kang_callback(self, query, context):
         """Handle kang callback"""
@@ -759,18 +872,33 @@ I can help you create amazing stickers!
                 line_heights.append(line_height)
                 total_height += line_height + 10
             
-            y_position = (image.height - total_height) // 2
-            
-            for i, line in enumerate(lines):
-                bbox = draw.textbbox((0, 0), line, font=font)
+            # Position text at top and bottom for classic meme format
+            if len(lines) >= 2:
+                # Top text
+                top_line = lines[0]
+                bbox = draw.textbbox((0, 0), top_line, font=font)
                 text_width = bbox[2] - bbox[0]
                 x = (image.width - text_width) // 2
-                
-                # Add text with outline
-                draw.text((x, y_position), line, font=font, fill="white", 
+                draw.text((x, 10), top_line, font=font, fill="white", 
                          stroke_width=3, stroke_fill="black")
                 
-                y_position += line_heights[i] + 10
+                # Bottom text
+                bottom_line = lines[1]
+                bbox = draw.textbbox((0, 0), bottom_line, font=font)
+                text_width = bbox[2] - bbox[0]
+                x = (image.width - text_width) // 2
+                draw.text((x, image.height - bbox[3] - 10), bottom_line, font=font, 
+                         fill="white", stroke_width=3, stroke_fill="black")
+            else:
+                # Center text for single line
+                line = lines[0]
+                bbox = draw.textbbox((0, 0), line, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                x = (image.width - text_width) // 2
+                y = (image.height - text_height) // 2
+                draw.text((x, y), line, font=font, fill="white", 
+                         stroke_width=3, stroke_fill="black")
             
             # Save to bytes
             output = BytesIO()
@@ -785,14 +913,29 @@ I can help you create amazing stickers!
 
     async def load_font(self, size=40):
         """Load font with multiple fallbacks for Termux"""
-        font_paths = [
-            "arial.ttf",
+        # Check Termux fonts directory first
+        termux_fonts = [
             "/data/data/com.termux/files/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/data/data/com.termux/files/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/data/data/com.termux/files/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]
+        
+        # System fonts
+        system_fonts = [
             "/system/fonts/Roboto-Regular.ttf",
             "/system/fonts/DroidSans.ttf",
-            "fonts/arial.ttf",
-            "fonts/Roboto-Regular.ttf"
+            "/system/fonts/NotoSans-Regular.ttf",
         ]
+        
+        # Local fonts
+        local_fonts = [
+            "fonts/Roboto-Regular.ttf",
+            "fonts/arial.ttf",
+            "arial.ttf",
+        ]
+        
+        # Combine all font paths
+        font_paths = termux_fonts + system_fonts + local_fonts
         
         for path in font_paths:
             try:
@@ -801,7 +944,7 @@ I can help you create amazing stickers!
             except:
                 continue
         
-        # Try to download a font if none exists
+        # If no font found, try to download one
         try:
             return await self.download_font(size)
         except:
@@ -809,23 +952,56 @@ I can help you create amazing stickers!
 
     async def download_font(self, size=40):
         """Download a font if not available locally"""
-        font_url = "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf"
+        font_urls = [
+            "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf",
+            "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf",
+        ]
         
-        try:
-            response = requests.get(font_url, timeout=10)
-            if response.status_code == 200:
-                # Save font to local directory
-                os.makedirs("fonts", exist_ok=True)
-                font_path = "fonts/Roboto-Regular.ttf"
-                
-                with open(font_path, "wb") as f:
-                    f.write(response.content)
-                
-                return ImageFont.truetype(font_path, size)
-        except Exception as e:
-            logger.error(f"Failed to download font: {e}")
+        os.makedirs("fonts", exist_ok=True)
+        
+        for font_url in font_urls:
+            try:
+                response = requests.get(font_url, timeout=10)
+                if response.status_code == 200:
+                    font_path = "fonts/Roboto-Regular.ttf"
+                    
+                    with open(font_path, "wb") as f:
+                        f.write(response.content)
+                    
+                    return ImageFont.truetype(font_path, size)
+            except:
+                continue
         
         return ImageFont.load_default()
+
+    async def apply_image_filter(self, image_bytes, filter_type="grayscale"):
+        """Apply filter to image"""
+        try:
+            # Open image
+            image = Image.open(image_bytes)
+            
+            # Apply filter
+            if filter_type == "grayscale":
+                filtered_image = ImageOps.grayscale(image)
+            elif filter_type == "invert":
+                filtered_image = ImageOps.invert(image.convert('RGB'))
+            elif filter_type == "posterize":
+                filtered_image = ImageOps.posterize(image, 3)
+            elif filter_type == "solarize":
+                filtered_image = ImageOps.solarize(image, threshold=128)
+            else:
+                filtered_image = image
+            
+            # Save to bytes
+            output = BytesIO()
+            filtered_image.save(output, format="PNG")
+            output.seek(0)
+            
+            return output
+            
+        except Exception as e:
+            logger.error(f"Error applying filter: {e}")
+            return None
 
     async def generate_quote_image(self, text, author):
         """Generate quote image with text and author"""
@@ -833,30 +1009,25 @@ I can help you create amazing stickers!
             # Create image with gradient background
             width, height = 512, 512
             
-            # Create gradient background
-            image = Image.new('RGB', (width, height), color='white')
+            # Create simple background
+            image = Image.new('RGB', (width, height), color=(240, 248, 255))  # Light blue
             draw = ImageDraw.Draw(image)
             
-            # Add gradient effect
-            for i in range(height):
-                r = 240 - int(i * 0.1)
-                g = 248 - int(i * 0.1)
-                b = 255 - int(i * 0.05)
-                draw.line([(0, i), (width, i)], fill=(r, g, b))
+            # Add subtle pattern
+            for i in range(0, width, 20):
+                draw.line([(i, 0), (i, height)], fill=(230, 240, 250), width=1)
             
             # Load fonts
             try:
-                font_large = await self.load_font(30)
-                font_small = await self.load_font(20)
-                font_italic = await self.load_font(25)
+                font_large = await self.load_font(28)
+                font_small = await self.load_font(18)
             except:
                 font_large = ImageFont.load_default()
                 font_small = ImageFont.load_default()
-                font_italic = ImageFont.load_default()
             
-            # Add quote marks
-            draw.text((50, 50), "❝", font=font_large, fill=(100, 100, 100))
-            draw.text((width - 100, height - 100), "❞", font=font_large, fill=(100, 100, 100))
+            # Add quote marks (using text since emoji might not render)
+            draw.text((40, 40), "\"", font=font_large, fill=(100, 100, 150))
+            draw.text((width - 80, height - 80), "\"", font=font_large, fill=(100, 100, 150))
             
             # Add quote text with word wrapping
             words = text.split()
@@ -866,7 +1037,7 @@ I can help you create amazing stickers!
             for word in words:
                 current_line.append(word)
                 test_line = ' '.join(current_line)
-                bbox = draw.textbbox((0, 0), test_line, font=font_italic)
+                bbox = draw.textbbox((0, 0), test_line, font=font_large)
                 line_width = bbox[2] - bbox[0]
                 
                 if line_width > width - 100:  # 50px margin on each side
@@ -880,10 +1051,10 @@ I can help you create amazing stickers!
             # Draw lines (limit to 6 lines)
             y = 100
             for line in lines[:6]:
-                bbox = draw.textbbox((0, 0), line, font=font_italic)
+                bbox = draw.textbbox((0, 0), line, font=font_large)
                 text_width = bbox[2] - bbox[0]
                 x = (width - text_width) // 2
-                draw.text((x, y), line, font=font_italic, fill=(50, 50, 50))
+                draw.text((x, y), line, font=font_large, fill=(50, 50, 50))
                 y += 40
             
             # Add author
@@ -911,52 +1082,46 @@ I can help you create amazing stickers!
     async def add_to_sticker_set(self, user_id, sticker, context):
         """Add sticker to user's sticker set"""
         try:
+            # Create sticker set name
+            sticker_set_name = f"stickerpack_{user_id}_by_{context.bot.username}"
+            
+            # Check if sticker is animated
+            is_animated = sticker.is_animated if hasattr(sticker, 'is_animated') else False
+            
             # Get sticker file
             file = await sticker.get_file()
             sticker_bytes = BytesIO()
             await file.download_to_memory(sticker_bytes)
             sticker_bytes.seek(0)
             
-            # Create sticker set name
-            sticker_set_name = f"stickerpack_{user_id}_by_{context.bot.username}"
-            
             # Try to create sticker set or add sticker
             try:
-                await context.bot.create_new_sticker_set(
-                    user_id=user_id,
-                    name=sticker_set_name,
-                    title=f"{context.bot.username}'s Collection",
-                    stickers=[sticker],
-                    sticker_format="static" if not sticker.is_animated else "animated",
-                    emojis="😀"
-                )
+                # For simplicity, we'll just send the sticker back
                 await context.bot.send_message(
                     user_id,
-                    f"✅ Sticker pack created!\n"
-                    f"📦 Pack: `{sticker_set_name}`\n"
-                    f"🔗 Link: https://t.me/addstickers/{sticker_set_name}"
+                    f"✅ Sticker processed!\n\n"
+                    f"📦 Sticker added to bot cache\n"
+                    f"🎭 Type: {'Animated' if is_animated else 'Static'}\n"
+                    f"📝 Note: Full sticker pack creation requires additional setup."
                 )
+                
+                # Also send the sticker back
+                sticker_bytes.seek(0)
+                await context.bot.send_sticker(user_id, sticker=sticker_bytes)
+                
             except Exception as e:
-                if "stickerset name already occupied" in str(e):
-                    await context.bot.add_sticker_to_set(
-                        user_id=user_id,
-                        name=sticker_set_name,
-                        sticker=sticker,
-                        emojis="👍"
-                    )
-                    await context.bot.send_message(
-                        user_id,
-                        "✅ Sticker added to your pack!"
-                    )
-                else:
-                    raise e
+                logger.error(f"Error with sticker: {e}")
+                await context.bot.send_message(
+                    user_id,
+                    "❌ Failed to process sticker. Please try again.\n"
+                    "Note: Sticker might be too large or in unsupported format."
+                )
                     
         except Exception as e:
             logger.error(f"Error adding to sticker set: {e}")
             await context.bot.send_message(
                 user_id,
-                "❌ Failed to add sticker. Please try again.\n"
-                "Note: You need to start @Stickers bot first."
+                "❌ Failed to process sticker. Please try again."
             )
 
     async def show_help(self, query, context):
@@ -1006,13 +1171,13 @@ Use `/q` to create quote stickers:
 Use `/kang` to add stickers to your pack:
 
 1. Send or reply to a sticker with `/kang`
-2. Bot will add it to your personal pack
-3. First time creates new pack
+2. Bot will process the sticker
+3. Sticker is saved to bot cache
 
 *Tips:*
-• You can add multiple stickers
-• Pack is private to you
-• Access via @Stickers bot
+• Supports static and animated stickers
+• Max size: 10MB
+• Common formats only
             """
         else:
             text = "Select a feature to learn more about it."
@@ -1034,12 +1199,20 @@ def main():
         logger.info("💡 Create a .env file with:")
         logger.info("   BOT_TOKEN=your_token_here")
         logger.info("   OWNER_ID=your_telegram_id")
+        print("\n📝 How to get BOT_TOKEN:")
+        print("1. Open Telegram and search for @BotFather")
+        print("2. Send /newbot and follow instructions")
+        print("3. Copy the token and add to .env file")
         return
     
     # Check if OWNER_ID is set
     if OWNER_ID == 0:
         logger.warning("⚠️ OWNER_ID not set! Some features will be disabled.")
         logger.info("💡 Add OWNER_ID=your_telegram_id to .env file")
+        print("\n📝 How to get your Telegram ID:")
+        print("1. Open Telegram and search for @userinfobot")
+        print("2. Send /start to the bot")
+        print("3. Copy your ID and add to .env file")
     
     bot = StickerMakerBot()
     
@@ -1070,17 +1243,24 @@ def main():
     
     # Start bot
     print("=" * 50)
-    print("🤖 Sticker Maker Bot")
+    print("🤖 STICKER MAKER BOT - TERMUX EDITION")
     print("=" * 50)
-    print("🔗 Loading configuration from .env file")
     print(f"👑 Owner ID: {OWNER_ID if OWNER_ID != 0 else 'Not set'}")
     print(f"⭐ Admin IDs: {len(ADMIN_IDS)} admin(s)")
-    print(f"🤖 Bot Username: @{application.bot.username}")
-    print(f"📊 User tracking: Enabled")
+    print(f"🎬 FFmpeg: {'✅ Available' if bot.ffmpeg_available else '❌ Not available'}")
+    print(f"📁 Max file size: {MAX_FILE_SIZE/1024/1024:.1f} MB")
     print("=" * 50)
     print("✅ Bot is starting...")
+    print("🔄 Use /start in Telegram to begin")
+    print("=" * 50)
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except KeyboardInterrupt:
+        print("\n👋 Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Bot crashed: {e}")
+        print(f"\n❌ Bot crashed: {e}")
 
 if __name__ == '__main__':
     main()

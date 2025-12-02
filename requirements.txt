@@ -3,5 +3,3 @@ pillow==10.3.0
 requests==2.31.0
 aiohttp==3.9.3
 python-dotenv==1.0.0
-moviepy==1.0.3
-numpy==1.26.4
